@@ -3,27 +3,51 @@
 #include <math.h>
 #include <time.h>
 
-int main() {
-
-    cudaDeviceProp p;
-    cudaGetDeviceProperties(&p, 0);
-    printf("GPU name: %s \n\n", p.name);
-
-    float val = 0.0, out = 0.0;
-    float* c_val;
-
-    cudaError_t err = cudaMalloc(&c_val, sizeof(float));
-    if (err != cudaSuccess) {
-        printf("err cudaMalloc: %s\n\n", cudaGetErrorString(err));
-        return 1;
+void matmul_cpu(const float* A, const float* B, float* C, int N) {
+    for (int row = 0; row < N; row++) {
+        for (int col = 0; col < N; col++) {
+            float sum = 0.0f;
+            for (int k = 0; k < N; k++) {
+                sum += A[row * N + k] * B[k * N + col];
+            }
+            C[row * N + col] = sum;
+        }
     }
+}
 
-    cudaMemcpy(c_val, &val, sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(&out, c_val, sizeof(float), cudaMemcpyDeviceToHost);
-    cudaFree(c_val);
+void run_matmul_time_test(int N) {
+    printf("\nN = %d\n", N);
 
-    if (out == val)
-        printf("ОК!\n");
+    size_t bytes = (size_t)N * N * sizeof(float);
+
+    float* cpu_A = (float*)malloc(bytes);
+    float* cpu_B = (float*)malloc(bytes);
+    float* cpu_C = (float*)malloc(bytes);
+
+    for (int i = 0; i < (N * N); i++)
+        cpu_A[i] = (float)rand() / RAND_MAX;
+
+    for (int i = 0; i < (N * N); i++)
+        cpu_B[i] = (float)rand() / RAND_MAX;
+
+    clock_t cpu_start_time = clock();
+    matmul_cpu(cpu_A, cpu_B, cpu_C, N);
+    float cpu_ms = (float)(clock() - cpu_start_time) / CLOCKS_PER_SEC * 1000.0;
+    printf("CPU time: %fms\n", cpu_ms);
+
+    free(cpu_A);
+    free(cpu_B);
+    free(cpu_C);
+}
+
+int main() {
+    srand(42);
+
+    int sizes[] = {100, 500, 1000, 1500, 2000};
+
+    for (int i = 0; i < 5; i++) {
+        run_matmul_time_test(sizes[i]);
+    }
 
     return 0;
 }
