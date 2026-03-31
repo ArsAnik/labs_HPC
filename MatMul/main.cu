@@ -21,12 +21,21 @@ void matmul_cpu(const float* A, const float* B, float* C, int N) {
 __global__ void matmul_gpu(const float* A, const float* B, float* C, int N) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
-
-    float sum = 0.0;
-    for (int k = 0; k < N; k++) {
-        sum += A[row * N + k] * B[k * N + col];
+    
+    if (row < N && col < N) {
+        float sum = 0.0;
+        for (int k = 0; k < N; k++) {
+            sum += A[row * N + k] * B[k * N + col];
+        }
+        C[row * N + col] = sum;
     }
-    C[row * N + col] = sum;
+}
+
+bool validation_calc(const float* cpu, const float* gpu, int size, float eps = 1e-2f) {
+    for (int i = 0; i < size; i++){
+        if (fabsf(cpu[i] - gpu[i]) > eps) return false;
+    }
+    return true;
 }
 
 void run_matmul_time_test(int N) {
@@ -63,6 +72,7 @@ void run_matmul_time_test(int N) {
     cudaEventCreate(&gpu_start_time);
     cudaEventCreate(&gpu_end_time);
 
+
     // copy array to the gpu
     cudaEventRecord(gpu_start_time);
 
@@ -76,12 +86,14 @@ void run_matmul_time_test(int N) {
     cudaEventElapsedTime(&gpu_copy_values_time, gpu_start_time, gpu_end_time);
     printf("GPU copy values time: %fms\n", gpu_copy_values_time);
 
+
     // calc in the kernel gpu
     cudaEventRecord(gpu_start_time);
 
     dim3 block(BLOCK_SIZE, BLOCK_SIZE);
     dim3 grid((N + block.x - 1) / block.x, (N + block.y - 1) / block.y);
     matmul_gpu<<<grid, block>>>(gpu_A, gpu_B, gpu_C, N);
+    cudaDeviceSynchronize();
 
     cudaEventRecord(gpu_end_time);
     cudaEventSynchronize(gpu_end_time);
@@ -89,6 +101,7 @@ void run_matmul_time_test(int N) {
     float gpu_calc_time = 0.0;
     cudaEventElapsedTime(&gpu_calc_time, gpu_start_time, gpu_end_time);
     printf("GPU calc time: %fms\n", gpu_calc_time);
+
 
     // copy result to the cpu
     cudaEventRecord(gpu_start_time);
@@ -103,12 +116,17 @@ void run_matmul_time_test(int N) {
 
     printf("GPU full time: %fms\n", gpu_copy_result_time + gpu_copy_values_time + gpu_calc_time);
 
+    // validation of calcuations 
+    bool is_valid_calc = validation_calc(cpu_C, gpu_result_C, N * N);
+    printf("Calculation are right: %s\n", is_valid_calc ? "Yes" : "No");
+
     cudaEventDestroy(gpu_start_time);
     cudaEventDestroy(gpu_end_time);
     cudaFree(gpu_A);
     cudaFree(gpu_B);
     cudaFree(gpu_C);
 
+    free(gpu_result_C);
     free(cpu_A);
     free(cpu_B);
     free(cpu_C);
@@ -133,6 +151,7 @@ int main() {
     dim3 block(1, 1);
     dim3 grid(1, 1);
     matmul_gpu<<<grid, block>>>(start_A, start_B, start_C, 1);
+    cudaDeviceSynchronize();
 
     cudaEventRecord(init_end_time);
     cudaEventSynchronize(init_end_time);
