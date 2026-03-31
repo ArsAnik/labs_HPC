@@ -3,7 +3,6 @@
 #include <math.h>
 #include <time.h>
 
-#define GRID_SIZE 16
 #define BLOCK_SIZE 16
 
 void matmul_cpu(const float* A, const float* B, float* C, int N) {
