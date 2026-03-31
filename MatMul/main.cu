@@ -114,11 +114,18 @@ void run_matmul_time_test(int N) {
     cudaEventElapsedTime(&gpu_copy_result_time, gpu_start_time, gpu_end_time);
     printf("GPU copy result time: %fms\n", gpu_copy_result_time);
 
-    printf("GPU full time: %fms\n", gpu_copy_result_time + gpu_copy_values_time + gpu_calc_time);
+    float gpu_full_time = gpu_copy_result_time + gpu_copy_values_time + gpu_calc_time;
+    printf("GPU full time: %fms\n", gpu_full_time);
+
 
     // validation of calcuations 
     bool is_valid_calc = validation_calc(cpu_C, gpu_result_C, N * N);
     printf("Calculation are right: %s\n", is_valid_calc ? "Yes" : "No");
+
+
+    // show acceleration
+    printf("Acceleration calc: %f\n", cpu_time / gpu_calc_time);
+    printf("Acceleration in general: %f\n", cpu_time / gpu_full_time);
 
     cudaEventDestroy(gpu_start_time);
     cudaEventDestroy(gpu_end_time);
