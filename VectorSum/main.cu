@@ -44,7 +44,6 @@ void run_vector_sum_time_test(int N) {
 
     // CPU calculation
     long int* cpu_vect;
-    //long int* cpu_vect = (long int*)malloc(bytes);
     cudaMallocHost(&cpu_vect, bytes);
 
     for (int i = 0; i < N; i++)
@@ -58,7 +57,6 @@ void run_vector_sum_time_test(int N) {
 
     
     // GPU calculation
-    int max_grid = (N + BLOCK_SIZE - 1) / BLOCK_SIZE;
     long int* gpu_vect;
     cudaMalloc(&gpu_vect, bytes);
 
@@ -84,10 +82,7 @@ void run_vector_sum_time_test(int N) {
     cudaEventRecord(gpu_start_time);
 
     int cur_size = N;
-    int grid_size = (cur_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    vector_sum_gpu<<<grid_size, BLOCK_SIZE>>>(gpu_vect, gpu_vect, cur_size);
-    cudaDeviceSynchronize();
-    cur_size = grid_size;
+    int grid_size;
 
     while (cur_size > 1) {
         grid_size = (cur_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
