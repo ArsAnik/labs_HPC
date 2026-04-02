@@ -60,9 +60,7 @@ void run_vector_sum_time_test(int N) {
     // GPU calculation
     int max_grid = (N + BLOCK_SIZE - 1) / BLOCK_SIZE;
     long int* gpu_vect;
-    long int* gpu_buf;
     cudaMalloc(&gpu_vect, bytes);
-    cudaMalloc(&gpu_buf, max_grid * sizeof(long int));
 
     cudaEvent_t gpu_start_time, gpu_end_time;
     cudaEventCreate(&gpu_start_time);
@@ -131,7 +129,6 @@ void run_vector_sum_time_test(int N) {
     cudaEventDestroy(gpu_start_time);
     cudaEventDestroy(gpu_end_time);
     cudaFree(gpu_vect);
-    cudaFree(gpu_buf);
     cudaFreeHost(cpu_vect);
 }
 
