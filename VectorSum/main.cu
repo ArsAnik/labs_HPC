@@ -20,6 +20,8 @@ __global__ void vector_sum_gpu(const long int* A, long int* res, int N) {
 
     if(global_id < N)
         block_data[thread_id] = A[global_id];
+    else
+        block_data[thread_id] = 0;
     __syncthreads();
 
     int part = blockDim.x / 2;
@@ -42,6 +44,7 @@ void run_vector_sum_time_test(int N) {
 
     // CPU calculation
     long int* cpu_vect;
+    //long int* cpu_vect = (long int*)malloc(bytes);
     cudaMallocHost(&cpu_vect, bytes);
 
     for (int i = 0; i < N; i++)
