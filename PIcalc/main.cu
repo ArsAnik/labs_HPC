@@ -29,6 +29,7 @@ void run_pi_calc_time_test(long int N) {
 }
 
 int main() {
+    srand(42);
     long int N[] = {100000, 1000000, 10000000, 100000000, 1000000000};
 
     for (int i = 0; i < 5; i++) {
