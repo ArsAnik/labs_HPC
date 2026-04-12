@@ -24,6 +24,22 @@ __global__ void init_curand(curandState* states) {
     curand_init(42, global_id, 0, &states[global_id]);
 }
 
+__device__ void block_reduce(double* block_data, double* res) {
+    int thread_id = threadIdx.x;
+    int part = blockDim.x / 2;
+
+    while (part > 0) {
+        if (thread_id < part)
+            block_data[thread_id] += block_data[thread_id + part];
+
+        __syncthreads();
+        part = part / 2;
+    }
+
+    if (thread_id == 0)
+        res[blockIdx.x] = block_data[0];
+}
+
 __global__ void pi_calc_gpu(curandState* states, double* res, long int N) {
     __shared__ double block_data[BLOCK_SIZE];
 
@@ -45,17 +61,7 @@ __global__ void pi_calc_gpu(curandState* states, double* res, long int N) {
     block_data[thread_id] = inside;
     __syncthreads();
 
-    int part = blockDim.x / 2;
-    while (part > 0) {
-        if (thread_id < part)
-            block_data[thread_id] += block_data[thread_id + part];
-
-        __syncthreads();
-        part = part / 2;
-    }
-
-    if (thread_id == 0)
-        res[blockIdx.x] = block_data[0];
+    block_reduce(block_data, res);
 }
 
 __global__ void reduce_gpu(double* res, long int N) {
@@ -70,17 +76,7 @@ __global__ void reduce_gpu(double* res, long int N) {
         block_data[thread_id] = 0;
     __syncthreads();
 
-    int part = blockDim.x / 2;
-    while (part > 0) {
-        if (thread_id < part)
-            block_data[thread_id] += block_data[thread_id + part];
-
-        __syncthreads();
-        part = part / 2;
-    }
-
-    if (thread_id == 0)
-        res[blockIdx.x] = block_data[0];
+    block_reduce(block_data, res);
 }
 
 void run_pi_calc_time_test(long int N, curandState* states) {
