@@ -33,17 +33,29 @@ __global__ void pi_calc_gpu(curandState* states, double* res, long int N) {
 
     curandState cur_state = states[global_id];
 
-    x = curand_uniform_double(&cur_state);
-    y = curand_uniform_double(&cur_state);
+    double inside = 0.0;
+    for (long int i = global_id; i < N; i += NUM_THREADS) {
+        x = curand_uniform_double(&cur_state);
+        y = curand_uniform_double(&cur_state);
+        if (x * x + y * y < 1.0)
+            inside++;
+    }
+    states[global_id] = cur_state;
 
-    if((global_id < N) && (x * x + y * y < 1.0))
-        block_data[thread_id] = 1;
-    else
-        block_data[thread_id] = 0;
-
+    block_data[thread_id] = inside;
     __syncthreads();
 
-    res[global_id] = block_data[thread_id];
+    int part = blockDim.x / 2;
+    while (part > 0) {
+        if (thread_id < part)
+            block_data[thread_id] += block_data[thread_id + part];
+
+        __syncthreads();
+        part = part / 2;
+    }
+
+    if (thread_id == 0)
+        res[blockIdx.x] = block_data[0];
 }
 
 __global__ void reduce_gpu(double* res, long int N) {
@@ -84,8 +96,10 @@ void run_pi_calc_time_test(long int N, curandState* states) {
 
 
     // GPU calculation
+    int num_blocks = NUM_THREADS / BLOCK_SIZE;
+
     double* gpu_buf;
-    cudaMalloc(&gpu_buf, N * sizeof(double));
+    cudaMalloc(&gpu_buf, num_blocks * sizeof(double));
 
     cudaEvent_t gpu_start_time, gpu_end_time;
     cudaEventCreate(&gpu_start_time);
@@ -93,20 +107,18 @@ void run_pi_calc_time_test(long int N, curandState* states) {
 
     // calc in the kernel gpu
     cudaEventRecord(gpu_start_time);
-
-    int num_blocks = (N + BLOCK_SIZE - 1) / BLOCK_SIZE;
     pi_calc_gpu<<<num_blocks, BLOCK_SIZE>>>(states, gpu_buf, N);
     cudaDeviceSynchronize();
 
-    long int cur_size = N;
+    long int cur_size = num_blocks;
     int grid_size;
 
     while (cur_size > 1) {
         grid_size = (cur_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
         reduce_gpu<<<grid_size, BLOCK_SIZE>>>(gpu_buf, cur_size);
+        cudaDeviceSynchronize();
         cur_size = grid_size;
     }
-    cudaDeviceSynchronize();
 
     cudaEventRecord(gpu_end_time);
     cudaEventSynchronize(gpu_end_time);
@@ -155,9 +167,9 @@ int main() {
     cudaEventDestroy(init_end_time);
 
     
-    long int N[] = {100, 1000000, 10000000, 100000000, 1000000000};
+    long int N[] = {1000, 1000000, 1000000000};
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 3; i++) {
         run_pi_calc_time_test(N[i], states);
     }
 
