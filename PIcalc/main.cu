@@ -79,9 +79,8 @@ void run_pi_calc_time_test(long int N) {
 
 
     // GPU calculation
-    int num_blocks = (N + BLOCK_SIZE - 1) / BLOCK_SIZE;
     double* gpu_buf;
-    cudaMalloc(&gpu_buf, num_blocks * sizeof(double));
+    cudaMalloc(&gpu_buf, N * sizeof(double));
 
     cudaEvent_t gpu_start_time, gpu_end_time;
     cudaEventCreate(&gpu_start_time);
@@ -90,6 +89,7 @@ void run_pi_calc_time_test(long int N) {
     // calc in the kernel gpu
     cudaEventRecord(gpu_start_time);
 
+    int num_blocks = (N + BLOCK_SIZE - 1) / BLOCK_SIZE;
     pi_calc_gpu<<<num_blocks, BLOCK_SIZE>>>(gpu_buf, N);
     cudaDeviceSynchronize();
 
@@ -126,9 +126,9 @@ void run_pi_calc_time_test(long int N) {
 
 int main() {
     srand(42);
-    long int N[] = {1000, 1000000, 10000000, 100000000, 1000000000};
+    long int N[] = {1000000, 1000000, 10000000, 100000000, 1000000000};
 
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 5; i++) {
         run_pi_calc_time_test(N[i]);
     }
 
