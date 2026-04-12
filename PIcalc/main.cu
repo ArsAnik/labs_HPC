@@ -163,9 +163,9 @@ int main() {
     cudaEventDestroy(init_end_time);
 
     
-    long int N[] = {1000, 1000000, 1000000000};
+    long int N[] = {1, 1000, 1000000, 1000000000};
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         run_pi_calc_time_test(N[i], states);
     }
 
