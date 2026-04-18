@@ -3,7 +3,11 @@
 #include <math.h>
 #include <time.h>
 #include <curand_kernel.h>
+#include <fstream>
+#include <cstdlib>
 
+#define NUM_POINTS 500
+#define DEGREE 5
 #define BLOCK_SIZE 1024
 #define NUM_THREADS (BLOCK_SIZE * 256)
 
@@ -17,6 +21,24 @@ void gen_coeff(int* coeff, int degree, int coef_range) {
     for (int i = 0; i < degree; i++) {
         coeff[i] = (int)(rand() % (2 * coef_range + 1) - coef_range);
         printf("c%d = %d\n", i, coeff[i]);
+    }
+}
+
+void gen_points(float* x_coord, float* y_coord, int num_points, int degree, int* coeffs) {
+    float x, y, x_pow;
+
+    for (int i = 0; i < num_points; i++) {
+        x = i;
+        y = 0.0f;
+        x_pow = 1.0f;
+
+        for (int j = 0; j <= degree; j++) {
+            y += coeffs[j] * x_pow;
+            x_pow *= x;
+        }
+
+        x_coord[i] = x;
+        y_coord[i] = y;
     }
 }
 
@@ -45,10 +67,16 @@ int main() {
     // cudaEventDestroy(init_start_time);
     // cudaEventDestroy(init_end_time);
 
-    size_t bytes = (size_t)5 * sizeof(int);
-    int* coeff = (int*)malloc(bytes);
+    int* coeff = (int*)malloc((size_t)DEGREE * sizeof(int));
+    float* x_coord = (float*)malloc((size_t)NUM_POINTS * sizeof(float));
+    float* y_coord = (float*)malloc((size_t)NUM_POINTS * sizeof(float));
 
-    gen_coeff(coeff, 5, 10);
+    gen_coeff(coeff, DEGREE, 10);
+    gen_points(x_coord, y_coord, NUM_POINTS, DEGREE, coeff);
+
+    for (int i = 0; i < NUM_POINTS; i++) {
+        printf("(%f, %f)\n", x_coord[i], y_coord[i]);
+    }
 
     // cudaFree(states);
     return 0;
