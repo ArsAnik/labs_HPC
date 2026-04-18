@@ -1,0 +1,23 @@
+version: "3.9"
+ 
+services:
+  cuda_dev:
+    build: .
+    image: cuda_dev:latest
+    container_name: cuda
+ 
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+ 
+    volumes:
+      - .:/workspace
+ 
+    stdin_open: true
+    tty: true
+ 
+    working_dir: /workspace
