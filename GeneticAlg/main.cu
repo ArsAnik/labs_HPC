@@ -16,9 +16,9 @@ struct Individual {
     float params[DEGREE];
 };
 
-__global__ void init_curand(curandState* states) {
+__global__ void init_curand(curandState* states, unsigned long long seed) {
     int global_id = blockIdx.x * blockDim.x + threadIdx.x;
-    curand_init(time(NULL), global_id, 0, &states[global_id]);
+    curand_init(seed, global_id, 0, &states[global_id]);
 }
 
 void gen_coeff(int* coeff, int degree, int coef_range) {
@@ -50,7 +50,7 @@ void gen_points(float* x_coord, float* y_coord, int num_points, int degree, int*
 int main() {
     srand(time(NULL));
 
-    cuda init
+    // cuda init
     curandState* states;
     cudaMalloc(&states, NUM_THREADS * sizeof(curandState));
 
@@ -59,7 +59,7 @@ int main() {
     cudaEventCreate(&init_end_time);
 
     cudaEventRecord(init_start_time);
-    init_curand<<<NUM_THREADS / BLOCK_SIZE, BLOCK_SIZE>>>(states);
+    init_curand<<<NUM_THREADS / BLOCK_SIZE, BLOCK_SIZE>>>(states, time(NULL));
     cudaDeviceSynchronize();
 
     cudaEventRecord(init_end_time);
@@ -83,7 +83,8 @@ int main() {
 
 
     // copy points to GPU
-    float* gpu_x, gpu_y;
+    float* gpu_x;
+    float* gpu_y;
     cudaMalloc(&gpu_x, NUM_POINTS * sizeof(float));
     cudaMalloc(&gpu_y, NUM_POINTS * sizeof(float));
     cudaMemcpy(gpu_x, x_coord, NUM_POINTS * sizeof(float), cudaMemcpyHostToDevice);
@@ -91,6 +92,7 @@ int main() {
     
     // initial population
     Individual* population;
+    cudaMalloc(&population, POPULATION_SIZE * sizeof(Individual));
     cudaMemset(population, 0, POPULATION_SIZE * sizeof(Individual));
 
     cudaFree(states);
