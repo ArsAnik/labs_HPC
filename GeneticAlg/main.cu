@@ -9,7 +9,7 @@
 #define NUM_POINTS 500
 #define POPULATION_SIZE 1000
 #define DEGREE 5
-#define BLOCK_SIZE 1024
+#define BLOCK_SIZE 128
 #define NUM_THREADS (BLOCK_SIZE * 256)
 
 struct Individual {
@@ -19,6 +19,59 @@ struct Individual {
 __global__ void init_curand(curandState* states, unsigned long long seed) {
     int global_id = blockIdx.x * blockDim.x + threadIdx.x;
     curand_init(seed, global_id, 0, &states[global_id]);
+}
+
+__global__ void fitness(const Individual* population, const float* point_x, const float* point_y, 
+                        float* fitnesses, int population_size, int num_points, int degree) {
+
+    int global_id = blockIdx.x * blockDim.x + threadIdx.x;
+    if (global_id >= population_size) return;
+
+    const Individual& individ = population[global_id];
+    float sum_error = 0.0;
+    float x, f_approx, x_pow, diff;
+
+    for (int i = 0; i < num_points; i++) {
+        x = point_x[i];
+        f_approx = 0.0;
+        x_pow = 1.0;
+
+        for (int j = 0; j < degree; j++) {
+            f_approx += individ.params[j] * x_pow;
+            x_pow *= x;
+        }
+
+        diff = f_approx - point_y[i];
+        sum_error += diff * diff;
+    }
+
+    fitnesses[global_id] = sum_error;
+}
+
+Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter) {
+    // initial population
+    Individual* population;
+    cudaMalloc(&population, POPULATION_SIZE * sizeof(Individual));
+    cudaMemset(population, 0, POPULATION_SIZE * sizeof(Individual));
+
+    float* gpu_fitnesses;
+    cudaMalloc(&gpu_fitnesses, POPULATION_SIZE * sizeof(float));
+
+    int num_blocks = (POPULATION_SIZE + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
+    for (int gen = 0; gen < max_iter; gen++) {
+        fitness<<<num_blocks, BLOCK_SIZE>>>(population, gpu_x, gpu_y, gpu_fitnesses, POPULATION_SIZE, NUM_POINTS, DEGREE);
+        cudaDeviceSynchronize();
+
+    }
+
+    Individual best_ind;
+    cudaMemcpy(&best_ind, population, sizeof(Individual), cudaMemcpyDeviceToHost);
+
+    cudaFree(population);
+    cudaFree(gpu_fitnesses);
+
+    return best_ind;
 }
 
 void gen_coeff(int* coeff, int degree, int coef_range) {
@@ -89,12 +142,17 @@ int main() {
     cudaMalloc(&gpu_y, NUM_POINTS * sizeof(float));
     cudaMemcpy(gpu_x, x_coord, NUM_POINTS * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(gpu_y, y_coord, NUM_POINTS * sizeof(float), cudaMemcpyHostToDevice);
-    
-    // initial population
-    Individual* population;
-    cudaMalloc(&population, POPULATION_SIZE * sizeof(Individual));
-    cudaMemset(population, 0, POPULATION_SIZE * sizeof(Individual));
+
+
+    Individual best_individ = genetic_algorithm(gpu_x, gpu_y, 2000);
+
 
     cudaFree(states);
+    cudaFree(gpu_x);
+    cudaFree(gpu_y);
+    free(coeff);
+    free(x_coord);
+    free(y_coord);
+
     return 0;
 }
