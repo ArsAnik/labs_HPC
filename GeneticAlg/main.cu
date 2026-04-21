@@ -48,7 +48,36 @@ __global__ void fitness(const Individual* population, const float* point_x, cons
     fitnesses[global_id] = sum_error;
 }
 
-Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter) {
+__global__ void crossover(const Individual* population, Individual* new_population, 
+                        curandState* states, int population_size) {
+    int global_id = blockIdx.x * blockDim.x + threadIdx.x;
+    if (global_id >= population_size) return;
+
+    curandState local_state = states[global_id];
+    // use only first half
+    int half = population_size / 2;
+
+    int p1 = (int)(curand_uniform(&local_state) * half) % half;
+    int p2 = (int)(curand_uniform(&local_state) * half) % half;
+
+    int crosspoint = curand(&local_state) % (DEGREE - 1) + 1;
+
+    Individual parent1 = population[p1];
+    Individual parent2 = population[p2];
+    Individual child;
+
+    for (int i = 0; i < DEGREE; i++) {
+        if (i < crosspoint)
+            child.params[i] = parent1.params[i];
+        else
+            child.params[i] = parent2.params[i];
+    }
+
+    new_population[global_id] = child;
+    states[global_id] = local_state;
+}
+
+Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandState* states) {
     // initial population
     Individual* population;
     cudaMalloc(&population, POPULATION_SIZE * sizeof(Individual));
@@ -63,6 +92,8 @@ Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter) {
         fitness<<<num_blocks, BLOCK_SIZE>>>(population, gpu_x, gpu_y, gpu_fitnesses, POPULATION_SIZE, NUM_POINTS, DEGREE);
         cudaDeviceSynchronize();
 
+        crossover<<<num_blocks, BLOCK_SIZE>>>(population, new_population, states, POPULATION_SIZE);
+        cudaDeviceSynchronize();
     }
 
     Individual best_ind;
@@ -144,7 +175,7 @@ int main() {
     cudaMemcpy(gpu_y, y_coord, NUM_POINTS * sizeof(float), cudaMemcpyHostToDevice);
 
 
-    Individual best_individ = genetic_algorithm(gpu_x, gpu_y, 2000);
+    Individual best_individ = genetic_algorithm(gpu_x, gpu_y, 2000, states);
 
 
     cudaFree(states);
