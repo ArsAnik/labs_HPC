@@ -49,7 +49,7 @@ __global__ void fitness(const Individual* population, const float* point_x, cons
 }
 
 __global__ void crossover(const Individual* population, Individual* new_population, 
-                        curandState* states, int population_size) {
+                        curandState* states, int population_size, int degree) {
     int global_id = blockIdx.x * blockDim.x + threadIdx.x;
     if (global_id >= population_size) return;
 
@@ -60,13 +60,13 @@ __global__ void crossover(const Individual* population, Individual* new_populati
     int p1 = (int)(curand_uniform(&local_state) * half) % half;
     int p2 = (int)(curand_uniform(&local_state) * half) % half;
 
-    int crosspoint = curand(&local_state) % (DEGREE - 1) + 1;
+    int crosspoint = curand(&local_state) % (degree - 1) + 1;
 
     Individual parent1 = population[p1];
     Individual parent2 = population[p2];
     Individual child;
 
-    for (int i = 0; i < DEGREE; i++) {
+    for (int i = 0; i < degree; i++) {
         if (i < crosspoint)
             child.params[i] = parent1.params[i];
         else
@@ -78,9 +78,13 @@ __global__ void crossover(const Individual* population, Individual* new_populati
 }
 
 Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandState* states) {
-    // initial population
+
     Individual* population;
+    Individual* new_population;
     cudaMalloc(&population, POPULATION_SIZE * sizeof(Individual));
+    cudaMalloc(&new_population, POPULATION_SIZE * sizeof(Individual));
+
+    // initial population
     cudaMemset(population, 0, POPULATION_SIZE * sizeof(Individual));
 
     float* gpu_fitnesses;
@@ -92,7 +96,7 @@ Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandSta
         fitness<<<num_blocks, BLOCK_SIZE>>>(population, gpu_x, gpu_y, gpu_fitnesses, POPULATION_SIZE, NUM_POINTS, DEGREE);
         cudaDeviceSynchronize();
 
-        crossover<<<num_blocks, BLOCK_SIZE>>>(population, new_population, states, POPULATION_SIZE);
+        crossover<<<num_blocks, BLOCK_SIZE>>>(population, new_population, states, POPULATION_SIZE, DEGREE);
         cudaDeviceSynchronize();
     }
 
