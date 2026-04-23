@@ -77,6 +77,36 @@ __global__ void crossover(const Individual* population, Individual* new_populati
     states[global_id] = local_state;
 }
 
+__global__ void mutation(Individual* population, curandState* states, int population_size,
+                        float Em, float Dm, int degree) {
+                        
+    int global_id = blockIdx.x * blockDim.x + threadIdx.x;
+    if (global_id >= population_size) return;
+
+    // skip first individual
+    if (global_id == 0) return;
+
+    curandState local_state = states[global_id];
+
+    int total_bits = (population_size - 1) * degree * sizeof(float);
+    float mut_count = Em + curand_normal(&local_state) * sqrtf(Dm);
+    int mut_num = max(1, min((int)mut_count, total_bits / 10));
+
+    // individ in bits
+    unsigned int *bits = (unsigned int*)population[global_id].params;
+
+    for (int i = 0; i < mut_num; i++) {
+        int bit_to_mutate = curand(&local_state) % total_bits;
+
+        int param_n = bit_to_mutate / sizeof(float);
+        int bit_n = bit_to_mutate % sizeof(float);
+        
+        bits[param_n] ^= (1u << bit_n);
+    }
+
+    states[global_id] = local_state;
+}
+
 Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandState* states) {
 
     Individual* population;
@@ -98,6 +128,8 @@ Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandSta
 
         crossover<<<num_blocks, BLOCK_SIZE>>>(population, new_population, states, POPULATION_SIZE, DEGREE);
         cudaDeviceSynchronize();
+
+        
     }
 
     Individual best_ind;
