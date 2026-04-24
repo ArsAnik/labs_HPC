@@ -5,12 +5,16 @@
 #include <curand_kernel.h>
 #include <fstream>
 #include <cstdlib>
+#include <thrust/device_vector.h>
+#include <thrust/sort.h>
 
 #define NUM_POINTS 500
 #define POPULATION_SIZE 1000
 #define DEGREE 5
 #define BLOCK_SIZE 128
 #define NUM_THREADS (BLOCK_SIZE * 256)
+#define EM 2
+#define DM 1
 
 struct Individual {
     float params[DEGREE];
@@ -107,6 +111,13 @@ __global__ void mutation(Individual* population, curandState* states, int popula
     states[global_id] = local_state;
 }
 
+void selection(Individual* population, float* fitnesses, int population_size) {
+    thrust::device_ptr<float> fit_ptr(fitnesses);
+    thrust::device_ptr<Individual> pop_ptr(population);
+    thrust::sort_by_key(fit_ptr, fit_ptr + population_size, pop_ptr);
+}
+
+
 Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandState* states) {
 
     Individual* population;
@@ -129,7 +140,11 @@ Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandSta
         crossover<<<num_blocks, BLOCK_SIZE>>>(population, new_population, states, POPULATION_SIZE, DEGREE);
         cudaDeviceSynchronize();
 
+        mutation<<<num_blocks, BLOCK_SIZE>>>(population, states, POPULATION_SIZE, EM, DM, DEGREE);
+        cudaDeviceSynchronize();
         
+        selection(new_population, gpu_fitnesses, POPULATION_SIZE);
+        cudaMemcpy(population, new_population, POPULATION_SIZE * sizeof(Individual), cudaMemcpyDeviceToDevice);
     }
 
     Individual best_ind;
