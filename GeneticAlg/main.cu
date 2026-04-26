@@ -282,11 +282,25 @@ int main() {
     cudaMemcpy(gpu_y, y_coord, NUM_POINTS * sizeof(float), cudaMemcpyHostToDevice);
 
 
+    cudaEvent_t gpu_start, gpu_end;
+    cudaEventCreate(&gpu_start);
+    cudaEventCreate(&gpu_end);
+
+    cudaEventRecord(gpu_start);
     Individual best_individ = genetic_algorithm(gpu_x, gpu_y, states);
+    cudaEventRecord(gpu_end);
+    cudaEventSynchronize(gpu_end);
+
+    float gpu_time = 0.0f;
+    cudaEventElapsedTime(&gpu_time, gpu_start, gpu_end);
     
     for (int i = 0; i < DEGREE; i++)
         printf("c%d = %f (true: %d)\n", i, best_individ.params[i], coeff[i]);
 
+    printf("Genetic alg GPU time: %f ms\n", gpu_time);
+
+    cudaEventDestroy(gpu_start);
+    cudaEventDestroy(gpu_end);
     cudaFree(states);
     cudaFree(gpu_x);
     cudaFree(gpu_y);
