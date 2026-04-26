@@ -13,13 +13,14 @@
 #define DEGREE 5
 #define BLOCK_SIZE 256
 #define NUM_THREADS (BLOCK_SIZE * 256)
-#define MAX_CONST_ITER 1000
+#define MAX_CONST_ITER 2000
 
 #define INIT_RANGE 10
 #define MUTATION_SIGMA 0.5
 #define MUTATION_PROB 0.15
 #define COMPARSION_SIZE 5
 #define SAVE_RANGE 20
+#define AIMED_FITNESS 0.5
 
 struct Individual {
     float params[DEGREE];
@@ -136,7 +137,8 @@ void selection(Individual* population, float* fitnesses, int population_size) {
 }
 
 
-Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandState* states, float best_fitness=1e30) {
+Individual genetic_algorithm(float* gpu_x, float* gpu_y, curandState* states, 
+                            float aimed_fitness=AIMED_FITNESS, int max_iter=MAX_CONST_ITER) {
 
     Individual* population;
     Individual* new_population;
@@ -153,8 +155,10 @@ Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandSta
     cudaMalloc(&gpu_fitnesses, POPULATION_SIZE * sizeof(float));
 
     int const_iter = 0;
+    float best_fitness = 1e30;
+    int gen = 0;
 
-    for (int gen = 0; gen < max_iter; gen++) {
+    while(true) {
         fitness<<<num_blocks, BLOCK_SIZE>>>(population, gpu_x, gpu_y, gpu_fitnesses, POPULATION_SIZE, NUM_POINTS, DEGREE);
         cudaDeviceSynchronize();
 
@@ -180,14 +184,22 @@ Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandSta
             const_iter++;
         }
 
-        if (gen % 50 == 0 || const_iter >= MAX_CONST_ITER) {
+        if (gen % 100 == 0) {
             printf("Generation #%d - fitness: %f\n", gen, best_fitness);
         }
 
-        if (const_iter >= MAX_CONST_ITER){
+        if (best_fitness < aimed_fitness){
+            printf("Last generation #%d\n", gen);
+            printf("Find aimed fitness: %f\n", best_fitness);
+            break;
+        }
+
+        if (gen >= max_iter){
             printf("Last generation #%d - fitness: %f\n", gen, best_fitness);
             break;
         }
+
+        ++gen;
     }
 
     Individual best_ind;
@@ -270,7 +282,7 @@ int main() {
     cudaMemcpy(gpu_y, y_coord, NUM_POINTS * sizeof(float), cudaMemcpyHostToDevice);
 
 
-    Individual best_individ = genetic_algorithm(gpu_x, gpu_y, 2000, states);
+    Individual best_individ = genetic_algorithm(gpu_x, gpu_y, states);
     
     for (int i = 0; i < DEGREE; i++)
         printf("c%d = %f (true: %d)\n", i, best_individ.params[i], coeff[i]);
