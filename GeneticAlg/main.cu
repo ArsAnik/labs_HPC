@@ -9,12 +9,15 @@
 #include <thrust/sort.h>
 
 #define NUM_POINTS 500
-#define POPULATION_SIZE 1000
+#define POPULATION_SIZE 3000
 #define DEGREE 5
-#define BLOCK_SIZE 128
+#define BLOCK_SIZE 256
 #define NUM_THREADS (BLOCK_SIZE * 256)
-#define EM 2
-#define DM 1
+#define MAX_CONST_ITER 500
+
+#define INIT_RANGE 10
+#define MUTATION_SIGMA 0.5
+#define MUTATION_PROB 0.15
 
 struct Individual {
     float params[DEGREE];
@@ -82,30 +85,17 @@ __global__ void crossover(const Individual* population, Individual* new_populati
 }
 
 __global__ void mutation(Individual* population, curandState* states, int population_size,
-                        float Em, float Dm, int degree) {
-                        
+                        float mutation_prob, float mutation_sigma) {
     int global_id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (global_id >= population_size) return;
-
-    // skip first individual
-    if (global_id == 0) return;
+    if (global_id == 0 || global_id >= population_size) return;
 
     curandState local_state = states[global_id];
 
-    int total_bits = (population_size - 1) * degree * sizeof(float);
-    float mut_count = Em + curand_normal(&local_state) * sqrtf(Dm);
-    int mut_num = max(1, min((int)mut_count, total_bits / 10));
-
-    // individ in bits
-    unsigned int *bits = (unsigned int*)population[global_id].params;
-
-    for (int i = 0; i < mut_num; i++) {
-        int bit_to_mutate = curand(&local_state) % total_bits;
-
-        int param_n = bit_to_mutate / sizeof(float);
-        int bit_n = bit_to_mutate % sizeof(float);
-        
-        bits[param_n] ^= (1u << bit_n);
+    for (int i = 0; i < DEGREE; i++) {
+        if (curand_uniform(&local_state) < mutation_prob) {
+            float delta = curand_normal(&local_state) * mutation_sigma;
+            population[global_id].params[i] += delta;
+        }
     }
 
     states[global_id] = local_state;
@@ -118,7 +108,7 @@ void selection(Individual* population, float* fitnesses, int population_size) {
 }
 
 
-Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandState* states) {
+Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandState* states, float best_fitness=1e30) {
 
     Individual* population;
     Individual* new_population;
@@ -133,6 +123,9 @@ Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandSta
 
     int num_blocks = (POPULATION_SIZE + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
+    int best_generation = 0;
+    int const_iter = 0;
+
     for (int gen = 0; gen < max_iter; gen++) {
         fitness<<<num_blocks, BLOCK_SIZE>>>(population, gpu_x, gpu_y, gpu_fitnesses, POPULATION_SIZE, NUM_POINTS, DEGREE);
         cudaDeviceSynchronize();
@@ -140,17 +133,38 @@ Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandSta
         crossover<<<num_blocks, BLOCK_SIZE>>>(population, new_population, states, POPULATION_SIZE, DEGREE);
         cudaDeviceSynchronize();
 
-        mutation<<<num_blocks, BLOCK_SIZE>>>(population, states, POPULATION_SIZE, EM, DM, DEGREE);
+        mutation<<<num_blocks, BLOCK_SIZE>>>(new_population, states, POPULATION_SIZE, MUTATION_PROB, MUTATION_SIGMA);
+        cudaDeviceSynchronize();
+
+        fitness<<<num_blocks, BLOCK_SIZE>>>(new_population, gpu_x, gpu_y, gpu_fitnesses, POPULATION_SIZE, NUM_POINTS, DEGREE);
         cudaDeviceSynchronize();
         
         selection(new_population, gpu_fitnesses, POPULATION_SIZE);
         cudaMemcpy(population, new_population, POPULATION_SIZE * sizeof(Individual), cudaMemcpyDeviceToDevice);
+
+        float cur_best;
+        cudaMemcpy(&cur_best, gpu_fitnesses, sizeof(float), cudaMemcpyDeviceToHost);
+
+        if (cur_best < best_fitness) {
+            best_fitness = cur_best;
+            best_generation = gen;
+            const_iter = 0;
+        } else {
+            const_iter++;
+        }
+
+        if (gen % 50 == 0 || const_iter >= MAX_CONST_ITER) {
+            printf("Generation #%d - fitness: %f\n", gen, best_fitness);
+        }
+
+        if (const_iter >= MAX_CONST_ITER) break;
     }
 
     Individual best_ind;
     cudaMemcpy(&best_ind, population, sizeof(Individual), cudaMemcpyDeviceToHost);
 
     cudaFree(population);
+    cudaFree(new_population);
     cudaFree(gpu_fitnesses);
 
     return best_ind;
@@ -168,7 +182,7 @@ void gen_points(float* x_coord, float* y_coord, int num_points, int degree, int*
     float x, y, x_pow;
 
     for (int i = 0; i < num_points; i++) {
-        x = i;
+        x = (float)i / num_points * 10 - 5;
         y = 0.0;
         x_pow = 1.0;
 
@@ -183,7 +197,7 @@ void gen_points(float* x_coord, float* y_coord, int num_points, int degree, int*
 }
 
 int main() {
-    srand(time(NULL));
+    srand(42);
 
     // cuda init
     curandState* states;
@@ -194,7 +208,7 @@ int main() {
     cudaEventCreate(&init_end_time);
 
     cudaEventRecord(init_start_time);
-    init_curand<<<NUM_THREADS / BLOCK_SIZE, BLOCK_SIZE>>>(states, time(NULL));
+    init_curand<<<NUM_THREADS / BLOCK_SIZE, BLOCK_SIZE>>>(states, 42);
     cudaDeviceSynchronize();
 
     cudaEventRecord(init_end_time);
@@ -227,7 +241,9 @@ int main() {
 
 
     Individual best_individ = genetic_algorithm(gpu_x, gpu_y, 2000, states);
-
+    
+    for (int i = 0; i < DEGREE; i++)
+        printf("c%d = %f (true: %d)\n", i, best_individ.params[i], coeff[i]);
 
     cudaFree(states);
     cudaFree(gpu_x);
