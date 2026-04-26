@@ -28,6 +28,19 @@ __global__ void init_curand(curandState* states, unsigned long long seed) {
     curand_init(seed, global_id, 0, &states[global_id]);
 }
 
+__global__ void init_population(Individual* population, curandState* states, int population_size, int degree, float range) {
+    int global_id = blockIdx.x * blockDim.x + threadIdx.x;
+    if (global_id >= population_size) return;
+
+    curandState local_state = states[global_id];
+    
+    for (int i = 0; i < degree; i++) {
+        population[global_id].params[i] = curand_uniform(&local_state) * 2.0 * range - range;
+    }
+    
+    states[global_id] = local_state;
+}
+
 __global__ void fitness(const Individual* population, const float* point_x, const float* point_y, 
                         float* fitnesses, int population_size, int num_points, int degree) {
 
@@ -122,15 +135,15 @@ Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandSta
     cudaMalloc(&population, POPULATION_SIZE * sizeof(Individual));
     cudaMalloc(&new_population, POPULATION_SIZE * sizeof(Individual));
 
+    int num_blocks = (POPULATION_SIZE + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
     // initial population
-    cudaMemset(population, 0, POPULATION_SIZE * sizeof(Individual));
+    init_population<<<num_blocks, BLOCK_SIZE>>>(population, states, POPULATION_SIZE, DEGREE, INIT_RANGE);
+    cudaDeviceSynchronize();
 
     float* gpu_fitnesses;
     cudaMalloc(&gpu_fitnesses, POPULATION_SIZE * sizeof(float));
 
-    int num_blocks = (POPULATION_SIZE + BLOCK_SIZE - 1) / BLOCK_SIZE;
-
-    int best_generation = 0;
     int const_iter = 0;
 
     for (int gen = 0; gen < max_iter; gen++) {
@@ -154,7 +167,6 @@ Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandSta
 
         if (cur_best < best_fitness) {
             best_fitness = cur_best;
-            best_generation = gen;
             const_iter = 0;
         } else {
             const_iter++;
