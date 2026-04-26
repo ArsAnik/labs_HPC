@@ -35,8 +35,8 @@ __global__ void fitness(const Individual* population, const float* point_x, cons
     if (global_id >= population_size) return;
 
     const Individual& individ = population[global_id];
-    float sum_error = 0.0;
-    float x, f_approx, x_pow, diff;
+    double sum_error = 0.0;
+    double x, f_approx, x_pow, diff;
 
     for (int i = 0; i < num_points; i++) {
         x = point_x[i];
@@ -56,9 +56,14 @@ __global__ void fitness(const Individual* population, const float* point_x, cons
 }
 
 __global__ void crossover(const Individual* population, Individual* new_population, 
-                        curandState* states, int population_size, int degree) {
+                        curandState* states, int population_size, int degree, int save_range=20) {
     int global_id = blockIdx.x * blockDim.x + threadIdx.x;
     if (global_id >= population_size) return;
+
+    if (global_id < save_range) {
+        new_population[global_id] = population[global_id];
+        return;
+    }
 
     curandState local_state = states[global_id];
     // use only first half
@@ -85,9 +90,11 @@ __global__ void crossover(const Individual* population, Individual* new_populati
 }
 
 __global__ void mutation(Individual* population, curandState* states, int population_size,
-                        float mutation_prob, float mutation_sigma) {
+                        float mutation_prob, float mutation_sigma, int save_range=20) {
     int global_id = blockIdx.x * blockDim.x + threadIdx.x;
     if (global_id == 0 || global_id >= population_size) return;
+
+    if (global_id < save_range) return;
 
     curandState local_state = states[global_id];
 
@@ -157,7 +164,10 @@ Individual genetic_algorithm(float* gpu_x, float* gpu_y, int max_iter, curandSta
             printf("Generation #%d - fitness: %f\n", gen, best_fitness);
         }
 
-        if (const_iter >= MAX_CONST_ITER) break;
+        if (const_iter >= MAX_CONST_ITER){
+            printf("Last generation #%d - fitness: %f\n", gen, best_fitness);
+            break;
+        }
     }
 
     Individual best_ind;
