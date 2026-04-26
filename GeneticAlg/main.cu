@@ -18,6 +18,8 @@
 #define INIT_RANGE 10
 #define MUTATION_SIGMA 0.5
 #define MUTATION_PROB 0.15
+#define COMPARSION_SIZE 5
+#define SAVE_RANGE 20
 
 struct Individual {
     float params[DEGREE];
@@ -69,7 +71,9 @@ __global__ void fitness(const Individual* population, const float* point_x, cons
 }
 
 __global__ void crossover(const Individual* population, Individual* new_population, 
-                        curandState* states, int population_size, int degree, int save_range=20) {
+                        curandState* states, int population_size, int degree, 
+                        int save_range=SAVE_RANGE, int comp_size=COMPARSION_SIZE) {
+
     int global_id = blockIdx.x * blockDim.x + threadIdx.x;
     if (global_id >= population_size) return;
 
@@ -82,20 +86,24 @@ __global__ void crossover(const Individual* population, Individual* new_populati
     // use only first half
     int half = population_size / 2;
 
-    int p1 = (int)(curand_uniform(&local_state) * half) % half;
-    int p2 = (int)(curand_uniform(&local_state) * half) % half;
+    // find best parent
+    int p1 = curand(&local_state) % half;
+    for (int i = 1; i < comp_size; i++) {
+        int candidate = curand(&local_state) % half;
+        if (candidate < p1) p1 = candidate;
+    }
+    
+    int p2 = curand(&local_state) % half;
+    for (int i = 1; i < comp_size; i++) {
+        int candidate = curand(&local_state) % half;
+        if (candidate < p2) p2 = candidate;
+    }
 
-    int crosspoint = curand(&local_state) % (degree - 1) + 1;
-
-    Individual parent1 = population[p1];
-    Individual parent2 = population[p2];
     Individual child;
-
+    
     for (int i = 0; i < degree; i++) {
-        if (i < crosspoint)
-            child.params[i] = parent1.params[i];
-        else
-            child.params[i] = parent2.params[i];
+        float alpha = curand_uniform(&local_state);
+        child.params[i] = alpha * population[p1].params[i] + (1.0 - alpha) * population[p2].params[i];
     }
 
     new_population[global_id] = child;
@@ -103,7 +111,7 @@ __global__ void crossover(const Individual* population, Individual* new_populati
 }
 
 __global__ void mutation(Individual* population, curandState* states, int population_size,
-                        float mutation_prob, float mutation_sigma, int save_range=20) {
+                        float mutation_prob, float mutation_sigma, int save_range=SAVE_RANGE) {
     int global_id = blockIdx.x * blockDim.x + threadIdx.x;
     if (global_id == 0 || global_id >= population_size) return;
 
