@@ -8,12 +8,12 @@
 #include <thrust/device_vector.h>
 #include <thrust/sort.h>
 
-#define NUM_POINTS 500
-#define POPULATION_SIZE 3000
+#define NUM_POINTS 1000
+#define POPULATION_SIZE 2000
 #define DEGREE 5
 #define BLOCK_SIZE 256
 #define NUM_THREADS (BLOCK_SIZE * 256)
-#define MAX_CONST_ITER 500
+#define MAX_CONST_ITER 1000
 
 #define INIT_RANGE 10
 #define MUTATION_SIGMA 0.5
