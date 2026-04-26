@@ -197,7 +197,7 @@ void gen_points(float* x_coord, float* y_coord, int num_points, int degree, int*
 }
 
 int main() {
-    srand(42);
+    srand(time(NULL));
 
     // cuda init
     curandState* states;
@@ -208,7 +208,7 @@ int main() {
     cudaEventCreate(&init_end_time);
 
     cudaEventRecord(init_start_time);
-    init_curand<<<NUM_THREADS / BLOCK_SIZE, BLOCK_SIZE>>>(states, 42);
+    init_curand<<<NUM_THREADS / BLOCK_SIZE, BLOCK_SIZE>>>(states, time(NULL));
     cudaDeviceSynchronize();
 
     cudaEventRecord(init_end_time);
